@@ -20,14 +20,13 @@ public class PuzzleManager : MonoBehaviour
     [Header("Histórico de Jogadas")]
     private Stack<ICommand> historicoComandos = new Stack<ICommand>();
     private List<ICommand> comandosExecutados = new List<ICommand>();
-    private List<int> ordemInicialPecas = new List<int>(); // Ordem embaralhada salva
+    private List<int> ordemInicialPecas = new List<int>();
 
     void Start()
     {
         EmbaralharPecas();
         SalvarOrdemInicial();
 
-        // Eventos dos botões
         botaoJogarNovamente.onClick.AddListener(JogarNovamente);
         botaoVerReplay.onClick.AddListener(() => StartCoroutine(FazerReplay()));
         botaoCancelarReplay.onClick.AddListener(CancelarReplay);
@@ -78,6 +77,12 @@ public class PuzzleManager : MonoBehaviour
         {
             var comando = historicoComandos.Pop();
             comando.Desfazer();
+            
+            // Remove o último comando da lista de executados
+            if (comandosExecutados.Count > 0)
+            {
+                comandosExecutados.RemoveAt(comandosExecutados.Count - 1);
+            }
         }
         else
         {
@@ -106,6 +111,9 @@ public class PuzzleManager : MonoBehaviour
         {
             pecas[i].SetSiblingIndex(i);
         }
+        
+        // Atualiza a ordem inicial após embaralhar
+        SalvarOrdemInicial();
     }
 
     void SalvarOrdemInicial()
@@ -128,17 +136,16 @@ public class PuzzleManager : MonoBehaviour
             pecasAtuais.Add(peca);
         }
 
-        for (int i = 0; i < ordemInicialPecas.Count; i++)
-        {
-            int indiceBuscado = ordemInicialPecas[i];
-            Transform pecaEncontrada = pecasAtuais.Find(p =>
-                p.GetComponent<PuzzlePiece>().indiceCorreto == indiceBuscado
-            );
+        // Ordena as peças de acordo com a ordem inicial salva
+        pecasAtuais.Sort((a, b) => {
+            int indexA = ordemInicialPecas.IndexOf(a.GetComponent<PuzzlePiece>().indiceCorreto);
+            int indexB = ordemInicialPecas.IndexOf(b.GetComponent<PuzzlePiece>().indiceCorreto);
+            return indexA.CompareTo(indexB);
+        });
 
-            if (pecaEncontrada != null)
-            {
-                pecaEncontrada.SetSiblingIndex(i);
-            }
+        for (int i = 0; i < pecasAtuais.Count; i++)
+        {
+            pecasAtuais[i].SetSiblingIndex(i);
         }
     }
 
@@ -168,39 +175,58 @@ public class PuzzleManager : MonoBehaviour
     {
         painelVitoria.SetActive(false);
         botaoCancelarReplay.gameObject.SetActive(true);
+        botaoJogarNovamente.gameObject.SetActive(false); // Esconde no início
         podeInteragir = false;
         cancelarReplay = false;
 
+        // Restaura para o estado inicial
         RestaurarOrdemInicial();
         yield return null;
 
+        // Executa cada comando novamente
         for (int i = 0; i < comandosExecutados.Count; i++)
         {
+            if (cancelarReplay) break;
+        
             comandosExecutados[i].Executar();
-
-            if (cancelarReplay)
-            {
-                // Executa tudo que falta de forma instantânea
-                for (int j = i + 1; j < comandosExecutados.Count; j++)
-                {
-                    comandosExecutados[j].Executar();
-                }
-                break;
-            }
-            else
-            {
-                yield return new WaitForSeconds(1f);
-            }
+            yield return new WaitForSeconds(1f);
         }
 
         botaoCancelarReplay.gameObject.SetActive(false);
         podeInteragir = true;
-        MostrarTelaDeVitoria();
+    
+        if (cancelarReplay)
+        {
+            // Coloca todas as peças na posição correta
+            for (int i = 0; i < panelPai.childCount; i++)
+            {
+                foreach (Transform child in panelPai)
+                {
+                    PuzzlePiece piece = child.GetComponent<PuzzlePiece>();
+                    if (piece.indiceCorreto == i)
+                    {
+                        child.SetSiblingIndex(i);
+                        break;
+                    }
+                }
+            }
+        
+            // Mostra o botão de jogar novamente SEM mostrar a tela de vitória
+            botaoJogarNovamente.gameObject.SetActive(true);
+            painelVitoria.SetActive(false);
+        }
+        else
+        {
+            MostrarTelaDeVitoria();
+        }
     }
 
     void CancelarReplay()
     {
         cancelarReplay = true;
+        // Garante que o botão de jogar novamente ficará visível
+        botaoJogarNovamente.gameObject.SetActive(true);
+        painelVitoria.SetActive(false);
     }
 
     void JogarNovamente()
